@@ -747,21 +747,36 @@ struct GenericAtomicRMWOpLowering
     // Append the cmpxchg op to the end of the loop block.
     auto successOrdering = LLVM::AtomicOrdering::acq_rel;
     auto failureOrdering = LLVM::AtomicOrdering::monotonic;
+
+    Value ptr = dataPtr;
+    Value cmp = loopArgument;
+    Value val = result;
+    if (auto floatType = dyn_cast<FloatType>(valueType)) {
+      unsigned width = floatType.getWidth();
+      Type intType = rewriter.getIntegerType(width);
+      cmp = rewriter.create<LLVM::BitcastOp>(loc, intType, cmp);
+      val = rewriter.create<LLVM::BitcastOp>(loc, intType, val);
+    }
+
     auto cmpxchg =
-        LLVM::AtomicCmpXchgOp::create(rewriter, loc, dataPtr, loopArgument,
-                                      result, successOrdering, failureOrdering);
+        LLVM::AtomicCmpXchgOp::create(rewriter, loc, ptr, cmp,
+                                      val, successOrdering, failureOrdering);
     // Extract the %new_loaded and %ok values from the pair.
     Value newLoaded = LLVM::ExtractValueOp::create(rewriter, loc, cmpxchg, 0);
     Value ok = LLVM::ExtractValueOp::create(rewriter, loc, cmpxchg, 1);
 
+    Value nextLoopArg = newLoaded;
+    if (isa<FloatType>(valueType))
+      nextLoopArg = rewriter.create<LLVM::BitcastOp>(loc, valueType, newLoaded);
+
     // Conditionally branch to the end or back to the loop depending on %ok.
     LLVM::CondBrOp::create(rewriter, loc, ok, endBlock, ArrayRef<Value>(),
-                           loopBlock, newLoaded);
+                           loopBlock, nextLoopArg);
 
     rewriter.setInsertionPointToEnd(endBlock);
 
     // The 'result' of the atomic_rmw op is the newly loaded value.
-    rewriter.replaceOp(atomicOp, {newLoaded});
+    rewriter.replaceOp(atomicOp, {nextLoopArg});
 
     return success();
   }
