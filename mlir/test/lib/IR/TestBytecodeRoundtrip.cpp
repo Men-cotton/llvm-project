@@ -164,6 +164,13 @@ private:
     parseConfig.getBytecodeReaderConfig().attachTypeCallback(
         [&](DialectBytecodeReader &reader, StringRef dialectName,
             Type &entry) -> LogicalResult {
+          // If the test dialect wasn't present in the bytecode, its version won't
+          // be available and none of the custom logic applies.
+          auto loadedVersions = reader.getLoadedDialectVersions();
+          if (loadedVersions.find(test::TestDialect::getDialectNamespace()) ==
+              loadedVersions.end())
+            return success();
+
           // Get test dialect version from the version map.
           auto versionOr = reader.getDialectVersion<test::TestDialect>();
           assert(succeeded(versionOr) && "expected reader to be able to access "
