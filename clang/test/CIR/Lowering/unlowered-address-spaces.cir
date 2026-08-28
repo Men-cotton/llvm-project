@@ -1,0 +1,118 @@
+// RUN: cir-opt %s --split-input-file --cir-to-llvm -verify-diagnostics
+
+!s32i = !cir.int<s, 32>
+
+module attributes {cir.triple = "spirv64-unknown-unknown"} {
+  // expected-error @below {{failed to legalize operation 'cir.func'}}
+  cir.func @language_address_space(%arg0: !cir.ptr<!s32i, lang_address_space(offload_global)>) {
+    cir.return
+  }
+}
+
+// -----
+
+!s32i = !cir.int<s, 32>
+
+module attributes {cir.triple = "spirv64-unknown-unknown"} {
+  // expected-error @below {{failed to legalize operation 'cir.func'}}
+  cir.func @function_and_array_language_address_space(
+      %arg0: !cir.ptr<!cir.func<(!cir.ptr<!cir.array<!cir.ptr<!s32i, lang_address_space(offload_constant)> x 4>>)>>) {
+    cir.return
+  }
+}
+
+// -----
+
+!s32i = !cir.int<s, 32>
+!rec_Foo = !cir.struct<"Foo" {data !s32i}>
+
+module attributes {cir.triple = "spirv64-unknown-unknown"} {
+  // expected-error @below {{failed to legalize operation 'cir.func'}}
+  cir.func @data_member_language_address_space(
+      %arg0: !cir.ptr<!cir.data_member<!cir.ptr<!s32i, lang_address_space(offload_global)> in !rec_Foo>>) {
+    cir.return
+  }
+}
+
+// -----
+
+!s32i = !cir.int<s, 32>
+!rec_Foo = !cir.struct<"Foo" {data !s32i}>
+
+module attributes {cir.triple = "spirv64-unknown-unknown"} {
+  // expected-error @below {{failed to legalize operation 'cir.func'}}
+  cir.func @method_language_address_space(
+      %arg0: !cir.ptr<!cir.method<!cir.func<(!cir.ptr<!s32i, lang_address_space(offload_global)>)> in !rec_Foo>>) {
+    cir.return
+  }
+}
+
+// -----
+
+!s32i = !cir.int<s, 32>
+
+module attributes {cir.triple = "spirv64-unknown-unknown"} {
+  // expected-error @below {{failed to legalize operation 'cir.func'}}
+  cir.func @nested_language_address_space(%arg0: !cir.ptr<!cir.ptr<!s32i, lang_address_space(offload_local)>>) {
+    cir.return
+  }
+}
+
+// -----
+
+!s32i = !cir.int<s, 32>
+
+module attributes {cir.triple = "spirv64-unknown-unknown"} {
+  cir.func @alloca_language_address_space() {
+    // expected-error @below {{failed to legalize operation 'cir.alloca'}}
+    %0 = cir.alloca "x" align(4) : !cir.ptr<!s32i, lang_address_space(offload_private)>
+    cir.return
+  }
+}
+
+// -----
+
+!s32i = !cir.int<s, 32>
+
+module attributes {cir.triple = "spirv64-unknown-unknown"} {
+  // expected-error @below {{failed to legalize operation 'cir.func'}}
+  cir.func private @language_address_space_return() -> !cir.ptr<!s32i, lang_address_space(offload_global)>
+}
+
+// -----
+
+!s32i = !cir.int<s, 32>
+
+module attributes {cir.triple = "spirv64-unknown-unknown"} {
+  // Unlike direct cir.func lowering, a global view can request FuncType
+  // conversion before its referenced function is lowered.
+  cir.global external @function_pointer = #cir.global_view<@global_view_callee> : !cir.ptr<!cir.void>
+
+  // expected-error @below {{failed to legalize operation 'cir.func'}}
+  cir.func private @global_view_callee() -> !cir.ptr<!s32i, lang_address_space(offload_global)>
+}
+
+// -----
+
+!s32i = !cir.int<s, 32>
+// Keep walking after the recursive member to find the language address space.
+!rec_Node = !cir.struct<"Node" {data !cir.ptr<!cir.struct<"Node">>, data !cir.ptr<!s32i, lang_address_space(offload_global)>}>
+
+module attributes {cir.triple = "spirv64-unknown-unknown"} {
+  // expected-error @below {{failed to legalize operation 'cir.func'}}
+  cir.func @recursive_struct_language_address_space(%arg0: !cir.ptr<!rec_Node>) {
+    cir.return
+  }
+}
+
+// -----
+
+!s32i = !cir.int<s, 32>
+!rec_U = !cir.union<"U" {data !s32i, data !cir.ptr<!s32i, lang_address_space(offload_global)>}>
+
+module attributes {cir.triple = "spirv64-unknown-unknown"} {
+  // expected-error @below {{failed to legalize operation 'cir.func'}}
+  cir.func @union_language_address_space(%arg0: !cir.ptr<!rec_U>) {
+    cir.return
+  }
+}
